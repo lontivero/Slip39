@@ -1,10 +1,8 @@
 # SLIP39
 
-// logo here
-
 A C# implementation of the [SLIP39](https://github.com/satoshilabs/slips/blob/master/slip-0039.md) for Shamir's Secret-Sharing for Mnemonic Codes.
 
-The code heavily "inspired" on the [Bitcoin Wallet library in Rust implementation](https://github.com/rust-bitcoin/rust-wallet/blob/master/src/sss.rs)
+The code is heavily "inspired" on the [Bitcoin Wallet library in Rust implementation](https://github.com/rust-bitcoin/rust-wallet/blob/master/src/sss.rs)
 
 # DISCLAIMER
 
@@ -44,7 +42,7 @@ var shares = Slip39.Generate(
     seed: "ABCDEFGHIJKLMNOP"u8.ToArray(),
     passphrase: "TREZOR");
 
-var recoveredSecret = Slip39.recoverSecret(shares, passphrase);
+var recoveredSecret = Slip39.Combine(shares, passphrase);
 Assert.Equal(masterSecret, recoveredSecret);
 ```
 
