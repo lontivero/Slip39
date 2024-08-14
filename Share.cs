@@ -581,8 +581,8 @@ public record Share(
         return writer.ToByteArray();
     }
 
-    private static readonly uint8[] CUSTOMIZATION_STRING_ORIG = "shamir"u8.ToArray(); 
-    private static readonly uint8[] CUSTOMIZATION_STRING_EXTENDABLE= "shamir_extendable"u8.ToArray(); 
+    private static readonly uint8[] CustomizationStringOrig = "shamir"u8.ToArray(); 
+    private static readonly uint8[] CustomizationStringExtendable= "shamir_extendable"u8.ToArray(); 
     private static int Checksum(uint16[] values, bool extendable)
     {
         var gen = new[]{
@@ -591,7 +591,7 @@ public record Share(
         };
 
         var chk = 1;
-        var customizationString = extendable ? CUSTOMIZATION_STRING_EXTENDABLE : CUSTOMIZATION_STRING_ORIG;
+        var customizationString = extendable ? CustomizationStringExtendable : CustomizationStringOrig;
         foreach (var v in customizationString.Select(x => (uint16)x).Concat(values))
         {
             var b = chk >> 20;
@@ -665,7 +665,7 @@ public class ShamirMnemonicTests
         Assert.Equal(MS, Shamir.Combine(mnemonics[1..4], "TREZOR"));
         Assert.NotEqual(MS, Shamir.Combine(mnemonics[1..4]));
     }
-    
+
     [Fact]
     public void TestGroupSharing()
     {
@@ -674,9 +674,10 @@ public class ShamirMnemonicTests
         byte[] memberThresholds = [3, 2, 2, 1];
         var shares = Shamir.Generate(groupThreshold, memberThresholds.Zip(groupSizes).ToArray(), MS);
         var mnemonics = shares.GroupBy(x => x.GroupIndex).Select(x => x.ToArray()).ToArray();
-     
+
         // Test all valid combinations of mnemonics.
-        foreach (var groups in Combinations(mnemonics.Zip(memberThresholds, (a, b)=>(Shares: a, MemberThreshold: b)), groupThreshold))
+        foreach (var groups in Combinations(mnemonics.Zip(memberThresholds, (a, b) => (Shares: a, MemberThreshold: b)),
+                     groupThreshold))
         {
             foreach (var group1Subset in Combinations(groups[0].Shares, groups[0].MemberThreshold))
             {
@@ -700,98 +701,93 @@ public class ShamirMnemonicTests
             Shamir.Combine(mnemonics[0][1..4])
         );
     }
+
+    [Fact]
+    public void TestGroupSharingThreshold1()
+    {
+        uint8 groupThreshold = 1;
+        uint8[] groupSizes = [5, 3, 5, 1];
+        uint8[] memberThresholds = [3, 2, 2, 1];
+        var shares = Shamir.Generate(groupThreshold, memberThresholds.Zip(groupSizes).ToArray(), MS);
+        var mnemonics = shares.GroupBy(x => x.GroupIndex).Select(x => x.ToArray()).ToArray();
+
+        foreach (var (group, memberThreshold) in mnemonics.Zip(memberThresholds, (g, t) => (g, t)))
+        {
+            foreach (var groupSubset in Combinations(group, memberThreshold))
+            {
+                var mnemonicSubset = groupSubset.OrderBy(_ => Guid.NewGuid()).ToArray();
+                Assert.Equal(MS, Shamir.Combine(mnemonicSubset));
+            }
+        }
+    }
+
+    [Fact]
+    public void TestAllGroupsExist()
+    {
+        foreach (var groupThreshold in new uint8[] {1, 2, 5})
+        {
+            var shares = Shamir.Generate(groupThreshold, [(3, 5), (1, 1), (2, 3), (2, 5), (3, 5)], MS);
+            var mnemonics = shares.GroupBy(x => x.GroupIndex).Select(x => x.ToArray()).ToArray();
+            Assert.Equal(5, mnemonics.Length);
+            Assert.Equal(19, mnemonics.Sum(g => g.Length));
+        }
+    }
+
+    [Fact]
+    public void TestInvalidSharing()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(1, [(2, 3)], MS.Take(14).ToArray())
+        );
+
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(1, [(2, 3)], MS.Concat(new byte[] {0x58}).ToArray())
+        );
+
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(3, [(3, 5), (2, 5)], MS)
+        );
+
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(0, [(3, 5), (2, 5)], MS)
+        );
+
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(2, [(3, 2), (2, 5)], MS)
+        );
+
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(2, [(0, 2), (2, 5)], MS)
+        );
+
+        Assert.Throws<ArgumentException>(() =>
+            Shamir.Generate(2, [(3, 5), (1, 3), (2, 5)], MS)
+        );
+    }
+
+    [Theory]
+    [MemberData(nameof(Slip39TestVector.TestCasesData), MemberType = typeof(Slip39TestVector))]
+    public void TestVectors(Slip39TestVector test)
+    {
+        if (!string.IsNullOrEmpty(test.secretHex))
+        {
+            var shares = test.mnemonics.Select(Share.FromMnemonic).ToArray();
+            var secret = Shamir.Combine(shares, "TREZOR");
+            Assert.Equal(test.secretHex, Convert.ToHexString(secret).ToLower());
+
+            //Assert.Equal(new BIP32Key(secret).ExtendedKey(), xprv);
+        }
+        else
+        {
+            Assert.Throws<ArgumentException>(() =>
+            {
+                var shares = test.mnemonics.Select(Share.FromMnemonic).ToArray();
+                Shamir.Combine(shares);
+                Assert.Fail($"Failed to raise exception for test vector \"{test.description}\".");
+            });
+        }
+    }
     
-   [Fact]
-   public void TestGroupSharingThreshold1()
-   {
-       uint8 groupThreshold = 1;
-       uint8[] groupSizes = [5, 3, 5, 1];
-       uint8[] memberThresholds = [3, 2, 2, 1];
-       var shares = Shamir.Generate(groupThreshold, memberThresholds.Zip(groupSizes).ToArray(), MS);
-       var mnemonics = shares.GroupBy(x => x.GroupIndex).Select(x => x.ToArray()).ToArray();
-
-       foreach (var (group, memberThreshold) in mnemonics.Zip(memberThresholds, (g, t) => (g, t)))
-       {
-           foreach (var groupSubset in Combinations(group, memberThreshold))
-           {
-               var mnemonicSubset = groupSubset.OrderBy(_ => Guid.NewGuid()).ToArray();
-               Assert.Equal(MS, Shamir.Combine(mnemonicSubset));
-           }
-       }
-   }
-
-   [Fact]
-   public void TestAllGroupsExist()
-   {
-       foreach (var groupThreshold in new uint8[] { 1, 2, 5 })
-       {
-           var shares = Shamir.Generate(groupThreshold, [ (3, 5), (1, 1), (2, 3), (2, 5), (3, 5) ], MS);
-           var mnemonics = shares.GroupBy(x => x.GroupIndex).Select(x => x.ToArray()).ToArray();
-           Assert.Equal(5, mnemonics.Length);
-           Assert.Equal(19, mnemonics.Sum(g => g.Length));
-       }
-   }
-
-   [Fact]
-   public void TestInvalidSharing()
-   {
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(1, [ (2, 3) ], MS.Take(14).ToArray())
-       );
-
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(1, [ (2, 3) ], MS.Concat(new byte[] { 0x58 }).ToArray())
-       );
-
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(3, [ (3, 5), (2, 5) ], MS)
-       );
-
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(0, [ (3, 5), (2, 5) ], MS)
-       );
-
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(2, [ (3, 2), (2, 5) ], MS)
-       );
-
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(2, [ (0, 2), (2, 5) ], MS)
-       );
-
-       Assert.Throws<ArgumentException>(() =>
-           Shamir.Generate(2, [ (3, 5), (1, 3), (2, 5) ], MS)
-       );
-   }
-
-   [Fact]
-   public void TestVectors()
-   {
-       string vectorsJson = File.ReadAllText("vectors.json");
-       var vectors = JsonConvert.DeserializeObject<IEnumerable<object[]>>(vectorsJson);
-       foreach (var x /*[description, mnemonics, secretHex, xprv]*/ in vectors)
-       {
-           var (description, mnemonics, secretHex, xprv) = ((string)x[0], ((JArray)x[1]).Values<string>().ToArray(), (string)x[2], (string)x[3]);
-           if (!string.IsNullOrEmpty(secretHex))
-           {
-               var shares = mnemonics.Select(Share.FromMnemonic).ToArray();
-               var secret = Shamir.Combine(shares, "TREZOR");
-               Assert.Equal(secretHex, Convert.ToHexString(secret).ToLower());
- 
-               //Assert.Equal(new BIP32Key(secret).ExtendedKey(), xprv);
-           }
-           else
-           {
-               Assert.Throws<ArgumentException>(() =>
-               {
-                   var shares = mnemonics.Select(Share.FromMnemonic).ToArray();
-                   Shamir.Combine(shares);
-                   Assert.Fail($"Failed to raise exception for test vector \"{description}\".");
-               });
-           }
-       }
-   }
-
     public static T[][] Combinations<T>(IEnumerable<T> iterable, int r)
     {
         IEnumerable<IEnumerable<T>> InternalCombinations()
@@ -829,96 +825,29 @@ public class ShamirMnemonicTests
 
         return InternalCombinations().Select(x => x.ToArray()).ToArray();
     }
-/*
+}
 
-    [Fact]
-    public void TestGroupSharingThreshold1()
-    {
-        int groupThreshold = 1;
-        int[] groupSizes = {5, 3, 5, 1};
-        int[] memberThresholds = {3, 2, 2, 1};
-        var mnemonics = Shamir.Generate(groupThreshold,
-            memberThresholds.Zip(groupSizes, (m, g) => (m, g)).ToList(), MS);
-
-        foreach (var (group, memberThreshold) in mnemonics.Zip(memberThresholds, (g, t) => (g, t)))
-        {
-            foreach (var groupSubset in Combinations(group, memberThreshold))
-            {
-                var mnemonicSubset = groupSubset.ToList();
-                mnemonicSubset = mnemonicSubset.OrderBy(x => Guid.NewGuid()).ToList();
-                Assert.Equal(MS, Shamir.Combine(mnemonicSubset));
-            }
-        }
-    }
-
-    [Fact]
-    public void TestAllGroupsExist()
-    {
-        foreach (int groupThreshold in new[] {1, 2, 5})
-        {
-            var mnemonics = Shamir.Generate(groupThreshold,
-                new List<(int, int)> {(3, 5), (1, 1), (2, 3), (2, 5), (3, 5)}, MS);
-            Assert.Equal(5, mnemonics.Count);
-            Assert.Equal(19, mnemonics.Sum(g => g.Count));
-        }
-    }
-
-    [Fact]
-    public void TestInvalidSharing()
-    {
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(1, new List<(int, int)> {(2, 3)}, MS.Take(14).ToArray())
-        );
-
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(1, new List<(int, int)> {(2, 3)}, MS.Concat(new byte[] {0x58}).ToArray())
-        );
-
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(3, new List<(int, int)> {(3, 5), (2, 5)}, MS)
-        );
-
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(0, new List<(int, int)> {(3, 5), (2, 5)}, MS)
-        );
-
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(2, new List<(int, int)> {(3, 2), (2, 5)}, MS)
-        );
-
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(2, new List<(int, int)> {(0, 2), (2, 5)}, MS)
-        );
-
-        Assert.Throws<ArgumentException>(() =>
-            Shamir.Generate(2, new List<(int, int)> {(3, 5), (1, 3), (2, 5)}, MS)
-        );
-    }
-
-    [Fact]
-    public void TestVectors()
+public record Slip39TestVector(string description, string[] mnemonics, string secretHex, string xprv)
+{
+    private static IEnumerable<Slip39TestVector> VectorsData()
     {
         string vectorsJson = File.ReadAllText("vectors.json");
-        var vectors = JsonConvert.DeserializeObject<List<(string, List<string>, string, string)>>(vectorsJson);
-        foreach (var (description, mnemonics, secretHex, xprv) in vectors)
+        var vectors = JsonConvert.DeserializeObject<IEnumerable<object[]>>(vectorsJson);
+        foreach (var x in vectors)
         {
-            if (!string.IsNullOrEmpty(secretHex))
-            {
-                var secret = Enumerable.Range(0, secretHex.Length / 2)
-                    .Select(x => Convert.ToByte(secretHex.Substring(x * 2, 2), 16))
-                    .ToArray();
-                Assert.Equal(secret, Shamir.Combine(mnemonics, "TREZOR"));
-                Assert.Equal(new BIP32Key(secret).ExtendedKey(), xprv);
-            }
-            else
-            {
-                Assert.Throws<MnemonicError>(() =>
-                {
-                    Shamir.Combine(mnemonics);
-                    Assert.True(false, $"Failed to raise exception for test vector \"{description}\".");
-                });
-            }
+            yield return new (
+                (string)x[0], // description
+                ((JArray)x[1]).Values<string>().ToArray(), // mnemonics
+                (string)x[2], // secretHex
+                (string)x[3]  // xprv
+            );
         }
     }
-*/
+
+    private static readonly Slip39TestVector[] TestCases = VectorsData().ToArray();
+
+    public static IEnumerable<object[]> TestCasesData =>
+        TestCases.Select(testCase => new object[] { testCase });
+
+    public override string ToString() => description;
 }

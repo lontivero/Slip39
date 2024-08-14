@@ -1,5 +1,4 @@
 /.idea/**
-/Slip39/bin/**
-/Slip39/obj/**
-/Slip39.sln.DotSettings.user
+/bin/**
+obj/**
 /.session.vim
