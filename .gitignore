@@ -1,4 +1,9 @@
-/.idea/**
-/bin/**
-obj/**
 /.session.vim
+.vs
+.vs
+bin
+obj
+*.user
+*.bak
+/src/Slip39.Cli/Properties/launchSettings.json
+/src/Slip39/Properties/launchSettings.json
